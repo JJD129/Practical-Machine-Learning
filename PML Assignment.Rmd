@@ -1,0 +1,129 @@
+---
+title: "Course Project"
+author: "JJD"
+date: "12/30/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+## Overview 
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here:
+
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har 
+
+(see the section on the Weight Lifting Exercise Dataset).
+
+```{r library, echo=FALSE, include=FALSE}
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(lattice)
+library(rpart)
+set.seed(333)
+```
+
+## Data Processing
+
+First the data is loaded before it is partitioned. 70% of the data will go into training while the remaining will be for the validation portion.
+
+```{r dataload and partitions, echo=FALSE, include=TRUE}
+trainURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+inTrain <- read.csv(url(trainURL))
+inTesting <- read.csv(url(testURL))
+label <- createDataPartition(inTrain$classe, p = 0.7, list = FALSE)
+training <- inTrain[label, ]
+traintest <- inTrain[-label, ]
+dim(training); dim(traintest)
+```
+
+The training dataset has 13,737 records and 160 columns. While the training test set has 5,885 records and 160 columns.
+
+A lot of the 160 columns has NA so they are removed from the dataset along with the first five columns since the purpose of the assignment is to see how well each excercise is done from the different participants and accelerometer placements.
+
+```{r clean training set, echo=FALSE, include=TRUE}
+training<-training[,colSums(is.na(training)) == 0]
+training<-training[,-(1:5)]
+NZV <- nearZeroVar(training)
+training <- training[ ,-NZV]
+dim(training)
+
+traintest<-traintest[,colSums(is.na(traintest)) == 0]
+traintest<-traintest[,-(1:5)]
+NZV <- nearZeroVar(traintest)
+traintest <- traintest[ ,-NZV]
+dim(traintest)
+```
+
+Now that the unnecessary columns have been removed from the dataset there are 54 columns left.
+
+## Exploratory analysis
+
+The variable `classe` contains 5 levels. The plot of the outcome variable shows the frequency of each levels in the subTraining data.
+
+```{r exploranalysis, echo=TRUE}
+plot(training$classe, col="orange", main="Levels of the variable classe", xlab="classe levels", ylab="Frequency")
+```
+
+The plot above shows that Level A is the most frequent classe. D appears to be the least frequent one.
+
+The expected out-of-sample error will correspond to the quantity: 1-accuracy in the cross-validation data. 
+
+Accuracy is the proportion of correct classified observation over the total sample in the traintest data set. 
+
+Expected accuracy is the expected accuracy in the out-of-sample data set (i.e. original testing data set). 
+
+Thus, the expected value of the out-of-sample error will correspond to the expected number of missclassified observations/total observations in the Test data set, which is the quantity: 1-accuracy found from the cross-validation data set.
+
+## Prediction Model Selection
+
+Three models will be used to determine which one is the most accurate in predicting.
+
+1) Boosting
+2) Decision Tree
+3) Random Forest
+
+### Boosting
+
+```{r boosting, echo=FALSE, include=FALSE}
+modFit <- train(classe ~ ., method="gbm",data=training)
+```
+
+```{r boosted, echo=FALSE, include=TRUE}
+modFit$finalModel
+predictGBM <- predict(modFit, traintest)
+confMatGBM <- confusionMatrix(predictGBM, traintest$classe)
+confMatGBM
+```
+
+### Descision Tree
+
+```{r trees, echo=FALSE, include=TRUE}
+modeFit <- train(classe ~.,data=training, method="rpart")
+print(modeFit$finalModel)
+predictDT <- predict(modeFit, traintest)
+confMatDT <- confusionMatrix(predictDT, traintest$classe)
+confMatDT
+```
+
+### Random Forest
+
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the execution. So, we proceed with the training the model (Random Forest) with the training data set.
+
+```{r random forest, echo=FALSE, include=TRUE}
+modelFit <- train(classe ~.,data=training, method="rf", ntree=500)
+print(modeFit$finalModel)
+predictRF <- predict(modelFit, traintest)
+confMatRF <- confusionMatrix(predictRF, traintest$classe)
+confMatRF
+```
+
+## Conclusion
+
+### Result
+
+The confusion matrices show, that the Boosted Model and Random Forest algorithm performes better than Decision Trees and the Boosted model. The accuracy for the Random Forest model was 0.996 (95% CI: (0.994, 0.997)) while the Boosted model was 0.983 (95% CI: (0.979, 0.987)) compared to the Decision Tree 0.491 (95% CI: (0.478, 0.504)) for Decision Tree model. The Random Forest model is slightly higher in accuracy and in the confidence interval so that was chosen over the Boosted model.
+
+### Expected out-of-sample error
+The expected out-of-sample error is estimated at 0.005, or 0.5%. The expected out-of-sample error is calculated as 1 - accuracy for predictions made against the cross-validation set. Our Test data set comprises 20 cases. With an accuracy above 99% on our cross-validation data, we can expect that very few, or none, of the test samples will be missclassified.
